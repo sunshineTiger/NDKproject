@@ -20,6 +20,7 @@ extern "C" {
 #include "libswscale/swscale.h"
 #include <libavutil/imgutils.h>
 }
+#define MAX_AUDIO_FRME_SIZE  2 * 44100
 extern "C" JNIEXPORT jstring JNICALL
 Java_com_example_ndkproject_MainActivity_stringFromJNI(
         JNIEnv *env,
@@ -50,6 +51,8 @@ Java_com_example_ndkproject_FFmpegSurface_decode(JNIEnv *env, jobject thiz, jstr
      * 初始化网络组件
      * **/
     avformat_network_init();
+    AVDictionary *options = NULL;
+    av_dict_set(&options, "stimeout", "20000000", 0);
     /**
      * 第二步
      * 打开封装格式->打开文件
@@ -145,7 +148,6 @@ Java_com_example_ndkproject_FFmpegSurface_decode(JNIEnv *env, jobject thiz, jstr
     // 定义绘图缓冲区
     ANativeWindow_Buffer window_buffer;
     // 开始读取帧
-
     while (av_read_frame(pAVFContext, packet) >= 0) {
         if (packet->stream_index == video_stream_index) {
             avcodec_send_packet(avCtx, packet);
@@ -190,4 +192,117 @@ Java_com_example_ndkproject_FFmpegSurface_decode(JNIEnv *env, jobject thiz, jstr
     avformat_close_input(&pAVFContext);
     // 释放 R1
     env->ReleaseStringUTFChars(path, str_);
+}extern "C"
+JNIEXPORT void JNICALL
+Java_com_example_ndkproject_MainActivity_Audioffmepg(JNIEnv *env, jobject thiz, jstring in_path,
+                                                     jstring out_path) {
+    const char *input_str = env->GetStringUTFChars(in_path, NULL);
+    const char *output_cstr = env->GetStringUTFChars(out_path, NULL);
+
+    avformat_network_init();
+    AVFormatContext *pavFormatContext = avformat_alloc_context();
+    int ret = avformat_open_input(&pavFormatContext, input_str, NULL, NULL);
+    if (ret < 0) {
+        if (pavFormatContext) {
+            LOGE("无法打开文件,error：%d", ret);
+            avformat_free_context(pavFormatContext);
+            return;
+        }
+    }
+    ret = avformat_find_stream_info(pavFormatContext, NULL);
+    if (ret < 0) {
+        LOGE("无法获取输入文件信息,error：%d", ret);
+        return;
+    }
+    int avMedia_type_audio = -1;
+    for (int i = 0; i < pavFormatContext->nb_streams; ++i) {
+        if (pavFormatContext->streams[i]->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+            avMedia_type_audio = i;
+            break;
+        }
+    }
+    if (avMedia_type_audio == -1) {
+        LOGE("找不到音频流");
+        return;
+    }
+    AVCodecParameters *pCodecPar = pavFormatContext->streams[avMedia_type_audio]->codecpar;
+    AVCodec *pCodec = avcodec_find_decoder(pCodecPar->codec_id);
+    AVCodecContext *avCtx = avcodec_alloc_context3(pCodec);
+    ret = avcodec_parameters_to_context(avCtx, pCodecPar);
+    if (ret < 0) {
+        LOGE("获取avCtx上下文失败");
+        return;
+    }
+    ret = avcodec_open2(avCtx, pCodec, NULL);
+    if (ret < 0) {
+        LOGE("解码器无法打开");
+        return;
+    }
+    //输出视频信息
+    LOGI("视频的文件格式：%s", pavFormatContext->iformat->name);
+    LOGI("视频时长：%lld", (pavFormatContext->duration) / (1000 * 1000));
+    LOGI("视频的宽高：%d,%d", avCtx->width, avCtx->height);
+    LOGI("解码器的名称：%s", pCodec->name);
+    AVPacket *packet = av_packet_alloc();//需要手动释放
+    AVFrame *frame = av_frame_alloc();//需要手动释放
+    SwrContext *swrCtx = swr_alloc();//需要手动是释放
+    /** 重采样设置参数--------------start**/
+    //输入采样率格式
+    enum AVSampleFormat in_sample_fmt = avCtx->sample_fmt;
+    //输出采样率格式
+    enum AVSampleFormat out_sample_fmt = AV_SAMPLE_FMT_S16;
+    //输入采样率
+    int in_sample_rate = avCtx->sample_rate;
+    //输出采样率
+    int out_sample_rate = 44100;
+    //获取声道布局
+    //根据声道个数默认的声道布局(两个声道，默认立体声)
+    uint64_t in_ch_layout = avCtx->channel_layout;
+    //输出布局声道
+    uint64_t out_ch_layout = AV_CH_LAYOUT_STEREO;
+
+    swr_alloc_set_opts(swrCtx, out_ch_layout, out_sample_fmt, out_sample_rate, in_ch_layout,
+                       in_sample_fmt, in_sample_rate, 0, NULL);
+    swr_init(swrCtx);
+    //获取输入输出的声道个数
+    int out_channel_nb = av_get_channel_layout_nb_channels(out_ch_layout);
+    /** 重采样设置参数--------------end**/
+    //16bit 44100 PCM 数据
+    FILE *fp_pcm = fopen(output_cstr, "wb");
+    if (fp_pcm == NULL) {
+        LOGE("文件打开失败");
+        return;
+    }
+    uint8_t *out_buffer = (uint8_t *) av_malloc(MAX_AUDIO_FRME_SIZE);
+    int framecount = 0;
+    while (av_read_frame(pavFormatContext, packet) >= 0) {
+        if (packet->stream_index == avMedia_type_audio) {
+            avcodec_send_packet(avCtx, packet);
+
+            ret = avcodec_receive_frame(avCtx, frame);
+            if (ret == AVERROR(EAGAIN)) {
+                continue;
+            } else if (ret < 0) {
+                LOGI("解码完成 ：%d", ret);
+                break;
+            }
+            LOGE("正在解码%d", framecount);
+            swr_convert(swrCtx, &out_buffer, MAX_AUDIO_FRME_SIZE,
+                        (const uint8_t **) (frame->data), frame->nb_samples);
+            int out_buffer_size = av_samples_get_buffer_size(NULL, out_channel_nb,
+                                                             frame->nb_samples, out_sample_fmt, 1);
+            fwrite(out_buffer, 1, out_buffer_size, fp_pcm);
+            ++framecount;
+        }
+        av_packet_unref(packet);
+    }
+    LOGE("解码完成end");
+    fclose(fp_pcm);
+    av_frame_free(&frame);
+    av_free(out_buffer);
+    swr_free(&swrCtx);
+    avcodec_close(avCtx);
+    avformat_close_input(&pavFormatContext);
+    env->ReleaseStringUTFChars(in_path, input_str);
+    env->ReleaseStringUTFChars(out_path, output_cstr);
 }
