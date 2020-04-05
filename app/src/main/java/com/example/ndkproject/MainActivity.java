@@ -37,33 +37,36 @@ public class MainActivity extends AppCompatActivity {
 
 
     public void viewButton(View view) {
-        new AsyncTask<String, Integer, String>() {
-            @Override
-            protected String doInBackground(String... strings) {
-                File file = new File(Environment.getExternalStorageDirectory(), "Kayla.mp3");
-                File file1 = new File(Environment.getExternalStorageDirectory(), "Kayla.pcm");
-                if (!file1.exists()) {
-                    try {
-                        if (file1.createNewFile()) {
-                            Log.e("ffmpegView", "创建成功");
-                        } else
-                            Log.e("ffmpegView", "创建失败");
-                    } catch (IOException e) {
-                        e.printStackTrace();
-                    }
-                } else
-                    Log.e("ffmpegView", "pcm不存在文件");
-//        for (String s : Environment.getExternalStorageDirectory().list()
-//        ) {
-//            Log.e("ffmpegView", "文件" + s);
-//        }
-                if (file.exists()) {
-                    Audioffmepg(file.getAbsolutePath(), file1.getAbsolutePath());
-                } else
-                    Log.e("ffmpegView", "不存在文件");
-                return "";
-            }
-        }.execute();
+        File file = new File(Environment.getExternalStorageDirectory(), "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxmvoe.mp4");
+        if (file.exists())
+            fFmpegSurface.start(file.getAbsolutePath());
+//        new AsyncTask<String, Integer, String>() {
+//            @Override
+//            protected String doInBackground(String... strings) {
+//                File file = new File(Environment.getExternalStorageDirectory(), "Kayla.mp3");
+//                File file1 = new File(Environment.getExternalStorageDirectory(), "Kayla.pcm");
+//                if (!file1.exists()) {
+//                    try {
+//                        if (file1.createNewFile()) {
+//                            Log.e("ffmpegView", "创建成功");
+//                        } else
+//                            Log.e("ffmpegView", "创建失败");
+//                    } catch (IOException e) {
+//                        e.printStackTrace();
+//                    }
+//                } else
+//                    Log.e("ffmpegView", "pcm不存在文件");
+////        for (String s : Environment.getExternalStorageDirectory().list()
+////        ) {
+////            Log.e("ffmpegView", "文件" + s);
+////        }
+//                if (file.exists()) {
+//                    Audioffmepg(file.getAbsolutePath(), file1.getAbsolutePath());
+//                } else
+//                    Log.e("ffmpegView", "不存在文件");
+//                return "";
+//            }
+//        }.execute();
 
     }
 

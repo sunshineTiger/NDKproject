@@ -168,8 +168,9 @@ Java_com_example_ndkproject_FFmpegSurface_decode(JNIEnv *env, jobject thiz, jstr
                        out_buffer + h * rgba_frame->linesize[0],
                        rgba_frame->linesize[0]);
             }
-            ANativeWindow_unlockAndPost(native_window);
 
+            ANativeWindow_unlockAndPost(native_window);
+            usleep(16*1000);
 
         }
         // 释放 packet 引用
